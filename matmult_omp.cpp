@@ -2,6 +2,7 @@
 #include <omp.h>
 
 using namespace std;
+#define mat_idx(i,j,col) (i*col + j)
 
 bool PRINT_ON = false;
 
@@ -70,9 +71,10 @@ double * trans_mat(size_t const nrows, size_t const ncols, double * const mat){
         goto cleanup;
     }
     
-    size_t idx;
-    for(idx = 0; idx < nrows*ncols; idx++){\
-        new_mat[idx] = mat[T_pos_eq(idx, nrows,ncols )];
+    for(size_t i=0; i < nrows; i++){
+        for(size_t j=0; j < ncols; j++){
+            new_mat[mat_idx(j,i,nrows)] = mat[mat_idx(i, j, ncols)];
+        }
     }
     
     printMat(new_mat, ncols, nrows );
@@ -81,7 +83,6 @@ double * trans_mat(size_t const nrows, size_t const ncols, double * const mat){
     cleanup:
     free(new_mat);
     return 0;
-
 
 }
 
@@ -117,7 +118,7 @@ int mult_mat(size_t const n, size_t const m, size_t const p,
     end = omp_get_wtime();
     printf("%f seconds\n", end - start);
     *Cp = C;
-	//printMat(C, n,p);
+	printMat(C, n,p);
     return 0;        
 }
 
@@ -138,26 +139,17 @@ int mult_mat_trans(size_t const n, size_t const m, size_t const p,
     for (i=0; i<n; ++i) {
         for (j=0; j<p; ++j) {
             for (k=0, sum=0.0; k<m; ++k) {
-                //cout << i << " " << j << " " << k << endl;
-                //cout << i*m+k << " " << T_pos_eq(k*p+j, p, m) << endl << endl;
-                //sum += A[i*m+k] * B[k*p+j  ];
-
-                if (k*p+j != p*m-1)
-                    idx_B = (m * (k*p+j)) % (p*m - 1);
-                else
-                    idx_B = k*p+j;
-
-                sum += A[i*m+k] * B[idx_B];
-
+                mat_idx(k,j,p);
+                mat_idx(i,k,m);
+                sum += A[mat_idx(i,k,m)] * B[mat_idx(j,k,m)];
             }
-            //cout <<"sum"<<endl;
             C[i*p+j] = sum;
         }
     }
     end = omp_get_wtime();
     printf("%f seconds\n", end - start);
     *Cp = C;
-	//printMat(C, n,p);
+	printMat(C, n,p);
     return 0;        
 }
 
@@ -216,7 +208,7 @@ int main(int argc, char * argv[]){
     create_mat(ncols, ncols2, &B);
 
     B_trans = trans_mat(ncols, ncols2, B);
-    printMat(B_trans, ncols2, ncols );
+    //printMat(B_trans, ncols2, ncols );
 
     cout<<"Parallel"<<endl;
     mult_mat(nrows, ncols, ncols2, A, B, &C);
