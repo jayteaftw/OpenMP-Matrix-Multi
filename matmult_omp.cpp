@@ -163,9 +163,8 @@ void matrix_matrix_mult_tile (
             for (c = cstart; c <= cend; c++) {
                 if (qstart == 0) 
                     dst[mat_idx(r,c,nc)] = 0.0;
-                    //dst[r][c] = 0.0;
                 for (q = qstart; q <= qend; q++) {
-                    dst[mat_idx(r,c,nc)] = dst[mat_idx(r,c,nc)] + src1[mat_idx(r,q,nq)] * src2[mat_idx(q,c,nc)];
+                    dst[mat_idx(r,c,nc)] += src1[mat_idx(r,q,nq)] * src2[mat_idx(q,c,nc)];
                     //dst[r][c] = dst[r][c] + src1[r][q] * src2[q][c];
                 } /* for q */
             } /* for c */
@@ -221,10 +220,9 @@ void matrix_tranposed_matrix_mult_tile (
             for (c = cstart; c <= cend; c++) {
                 if (qstart == 0) 
                     dst[mat_idx(r,c,nc)] = 0.0;
-                    //dst[r][c] = 0.0;
                 for (q = qstart; q <= qend; q++) {
-                    dst[mat_idx(r,c,nc)] = dst[mat_idx(r,c,nc)] + src1[mat_idx(r,q,nq)] * src2_trans[mat_idx(c,q,nq)];
-                    //dst[r][c] = dst[r][c] + src1[r][q] * src2[q][c];
+                    //cout<<mat_idx(r,c,nc)<<" "<<mat_idx(r,q,nq)<<" "<<mat_idx(c,q,nq)<<" "<<endl;
+                    dst[mat_idx(r,c,nc)]  += src1[mat_idx(r,q,nq)] * src2_trans[mat_idx(c,q,nq)];
                 } /* for q */
             } /* for c */
         } /* for r */
@@ -255,7 +253,7 @@ void matrix_transposed_matrix_mult_by_tiling (
                     if (qend >= nq) 
                         qend = nq - 1;
                         //cout<<rstart<<" "<<qstart<<" "<<cstart<<" "<<endl;
-                    matrix_matrix_mult_tile(C, src1, src2_trans, nr, nc, nq, rstart, rend, cstart, cend, qstart, qend);
+                    matrix_tranposed_matrix_mult_tile(C, src1, src2_trans, nr, nc, nq, rstart, rend, cstart, cend, qstart, qend);
                 } /* for qstart */
             } /* for cstart */
         } /* for rstart */
@@ -265,6 +263,37 @@ void matrix_transposed_matrix_mult_by_tiling (
         *dst = C;
         
     } /* matrix_matrix_mult_by_tiling */ 
+
+
+void matrix_transposed_matrix_mult_by_blocking (
+    double** dst, double* src1, double* src2_trans,
+    int nr, int nc, int nq, //rxq qxc
+    int ctilesize, int qtilesize)
+    { 
+        double *C = NULL;
+        C = (double*) malloc(nr*nc*sizeof(*C));
+        int rstart, rend, cstart, cend, qstart, qend;
+        double start, end;
+        start = omp_get_wtime();
+        for (rstart = 0; rstart < nr; rstart += 1) {
+            rend = rstart;
+            for (cstart = 0; cstart < nc; cstart += 1) {
+                cend = cstart;
+                for(qstart = 0; qstart < nq; qstart += qtilesize) {
+                    qend = qstart + qtilesize - 1;
+                    if (qend >= nq) 
+                        qend = nq - 1;
+                        //cout<<rstart<<" "<<qstart<<" "<<cstart<<" "<<endl;
+                    matrix_tranposed_matrix_mult_tile(C, src1, src2_trans, nr, nc, nq, rstart, rend, cstart, cend, qstart, qend);
+                } /* for qstart */
+            } /* for cstart */
+        } /* for rstart */
+        end = omp_get_wtime();
+        printf("%f seconds\n", end - start);
+        printMat(C, nr,nc);
+        *dst = C;
+        
+    } 
 
 
 
@@ -328,12 +357,16 @@ int main(int argc, char * argv[]){
     cout<<"Parallel w/ trans"<<endl;
     mult_mat_transposed(nrows, ncols, ncols2, A, B_trans, &C); */
 
-    cout<<"Parallel Tiling"<<endl;
-    matrix_matrix_mult_by_tiling ( &C, A, B, nrows, ncols2, ncols, 300, 300, 300);
+    //cout<<"Parallel Tiling"<<endl;
+    //matrix_matrix_mult_by_tiling ( &C, A, B, nrows, ncols2, ncols, 300, 300, 300); 
 
     cout<<"Parallel Tiling Transposed"<<endl;
-    matrix_matrix_mult_by_tiling ( &C, A, B_trans, nrows, ncols2, ncols, 300, 300, 300);
+    matrix_matrix_mult_by_tiling ( &C, A, B_trans, nrows, ncols2, ncols, 4500, 4500, 4500);
 
+    cout<<"Parallel Blocking Transposed"<<endl;
+    matrix_transposed_matrix_mult_by_blocking ( &C, A, B_trans, nrows, ncols2, ncols, 300, 300);
+
+    
     cout<<"Sequential"<<endl;
     mult_mat_seq(nrows, ncols, ncols2, A, B, &C_seq);
     
