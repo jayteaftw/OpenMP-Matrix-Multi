@@ -264,27 +264,43 @@ void matrix_transposed_matrix_mult_by_tiling (
         
     } /* matrix_matrix_mult_by_tiling */ 
 
+void matrix_tranposed_matrix_mult_block (
+    double* dst, double* src1, double* src2_trans,
+    int nr, int nc, int nq,
+    int r, int c,
+    int qstart, int qend)
+    { /* matrix_matrix_mult_tile */
+        int q;
+
+        
+        if (qstart == 0) 
+            dst[mat_idx(r,c,nc)] = 0.0;
+        
+        for (q = qstart; q <= qend; q++) {
+            //cout<<mat_idx(r,c,nc)<<" "<<mat_idx(r,q,nq)<<" "<<mat_idx(c,q,nq)<<" "<<endl;
+            dst[mat_idx(r,c,nc)]  += src1[mat_idx(r,q,nq)] * src2_trans[mat_idx(c,q,nq)];
+        } /* for q */   
+    } /* matrix_matrix_mult_tile */
 
 void matrix_transposed_matrix_mult_by_blocking (
     double** dst, double* src1, double* src2_trans,
     int nr, int nc, int nq, //rxq qxc
-    int ctilesize, int qtilesize)
+    int qtilesize)
     { 
         double *C = NULL;
         C = (double*) malloc(nr*nc*sizeof(*C));
-        int rstart, rend, cstart, cend, qstart, qend;
+        int rstart, cstart, qstart, qend;
         double start, end;
         start = omp_get_wtime();
+        #pragma omp parallel for collapse(2)
         for (rstart = 0; rstart < nr; rstart += 1) {
-            rend = rstart;
             for (cstart = 0; cstart < nc; cstart += 1) {
-                cend = cstart;
                 for(qstart = 0; qstart < nq; qstart += qtilesize) {
                     qend = qstart + qtilesize - 1;
                     if (qend >= nq) 
                         qend = nq - 1;
                         //cout<<rstart<<" "<<qstart<<" "<<cstart<<" "<<endl;
-                    matrix_tranposed_matrix_mult_tile(C, src1, src2_trans, nr, nc, nq, rstart, rend, cstart, cend, qstart, qend);
+                    matrix_tranposed_matrix_mult_block(C, src1, src2_trans, nr, nc, nq, rstart, cstart, qstart, qend);
                 } /* for qstart */
             } /* for cstart */
         } /* for rstart */
@@ -364,7 +380,7 @@ int main(int argc, char * argv[]){
     matrix_matrix_mult_by_tiling ( &C, A, B_trans, nrows, ncols2, ncols, 4500, 4500, 4500);
 
     cout<<"Parallel Blocking Transposed"<<endl;
-    matrix_transposed_matrix_mult_by_blocking ( &C, A, B_trans, nrows, ncols2, ncols, 300, 300);
+    matrix_transposed_matrix_mult_by_blocking ( &C, A, B_trans, nrows, ncols2, ncols, 300);
 
     
     cout<<"Sequential"<<endl;
