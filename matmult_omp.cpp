@@ -123,7 +123,7 @@ int mult_mat(size_t const n, size_t const m, size_t const p,
 }
 
 
-int mult_mat_trans(size_t const n, size_t const m, size_t const p,
+int mult_mat_transposed(size_t const n, size_t const m, size_t const p,
              double const * const A, double const * const B,
              double ** const Cp){
     
@@ -131,16 +131,12 @@ int mult_mat_trans(size_t const n, size_t const m, size_t const p,
     double sum, start, end;
     double *C = NULL;
     C = (double*) malloc(n*p*sizeof(*C));
-
-    size_t idx_B;
-
     start = omp_get_wtime();
-    #pragma omp parallel for collapse(2)
+    //#pragma omp parallel for collapse(2)
     for (i=0; i<n; ++i) {
         for (j=0; j<p; ++j) {
             for (k=0, sum=0.0; k<m; ++k) {
-                mat_idx(k,j,p);
-                mat_idx(i,k,m);
+                cout<<mat_idx(i,k,m)<<" "<<mat_idx(j,k,m)<<endl;
                 sum += A[mat_idx(i,k,m)] * B[mat_idx(j,k,m)];
             }
             C[i*p+j] = sum;
@@ -152,6 +148,123 @@ int mult_mat_trans(size_t const n, size_t const m, size_t const p,
 	printMat(C, n,p);
     return 0;        
 }
+
+
+void matrix_matrix_mult_tile (
+    double* dst, double* src1, double* src2,
+    int nr, int nc, int nq,
+    int rstart, int rend, int cstart, int cend,
+    int qstart, int qend)
+    { /* matrix_matrix_mult_tile */
+        int r, c, q;
+
+        #pragma omp parallel for collapse(2)
+        for (r = rstart; r <= rend; r++) {
+            for (c = cstart; c <= cend; c++) {
+                if (qstart == 0) 
+                    dst[mat_idx(r,c,nc)] = 0.0;
+                    //dst[r][c] = 0.0;
+                for (q = qstart; q <= qend; q++) {
+                    dst[mat_idx(r,c,nc)] = dst[mat_idx(r,c,nc)] + src1[mat_idx(r,q,nq)] * src2[mat_idx(q,c,nc)];
+                    //dst[r][c] = dst[r][c] + src1[r][q] * src2[q][c];
+                } /* for q */
+            } /* for c */
+        } /* for r */
+    } /* matrix_matrix_mult_tile */
+
+
+void matrix_matrix_mult_by_tiling (
+    double** dst, double* src1, double* src2,
+    int nr, int nc, int nq, //rxq qxc
+    int rtilesize, int ctilesize, int qtilesize)
+    { /* matrix_matrix_mult_by_tiling */
+        double *C = NULL;
+        C = (double*) malloc(nr*nc*sizeof(*C));
+        int rstart, rend, cstart, cend, qstart, qend;
+        double start, end;
+        start = omp_get_wtime();
+        for (rstart = 0; rstart < nr; rstart += rtilesize) {
+            rend = rstart + rtilesize - 1;
+            if (rend >= nr) 
+                rend = nr - 1;
+            for (cstart = 0; cstart < nc; cstart += ctilesize) {
+                cend = cstart + ctilesize - 1;
+                if (cend >= nc) 
+                    cend = nc - 1;
+                for (qstart = 0; qstart < nq; qstart += qtilesize) {
+                    qend = qstart + qtilesize - 1;
+                    if (qend >= nq) 
+                        qend = nq - 1;
+                        //cout<<rstart<<" "<<qstart<<" "<<cstart<<" "<<endl;
+                    matrix_matrix_mult_tile(C, src1, src2, nr, nc, nq, rstart, rend, cstart, cend, qstart, qend);
+                } /* for qstart */
+            } /* for cstart */
+        } /* for rstart */
+        end = omp_get_wtime();
+        printf("%f seconds\n", end - start);
+        printMat(C, nr,nc);
+        *dst = C;
+
+    } /* matrix_matrix_mult_by_tiling */ 
+
+
+void matrix_tranposed_matrix_mult_tile (
+    double* dst, double* src1, double* src2_trans,
+    int nr, int nc, int nq,
+    int rstart, int rend, int cstart, int cend,
+    int qstart, int qend)
+    { /* matrix_matrix_mult_tile */
+        int r, c, q;
+
+        #pragma omp parallel for collapse(2)
+        for (r = rstart; r <= rend; r++) {
+            for (c = cstart; c <= cend; c++) {
+                if (qstart == 0) 
+                    dst[mat_idx(r,c,nc)] = 0.0;
+                    //dst[r][c] = 0.0;
+                for (q = qstart; q <= qend; q++) {
+                    dst[mat_idx(r,c,nc)] = dst[mat_idx(r,c,nc)] + src1[mat_idx(r,q,nq)] * src2_trans[mat_idx(c,q,nq)];
+                    //dst[r][c] = dst[r][c] + src1[r][q] * src2[q][c];
+                } /* for q */
+            } /* for c */
+        } /* for r */
+    } /* matrix_matrix_mult_tile */
+
+
+
+void matrix_transposed_matrix_mult_by_tiling (
+    double** dst, double* src1, double* src2_trans,
+    int nr, int nc, int nq, //rxq qxc
+    int rtilesize, int ctilesize, int qtilesize)
+    { /* matrix_matrix_mult_by_tiling */
+        double *C = NULL;
+        C = (double*) malloc(nr*nc*sizeof(*C));
+        int rstart, rend, cstart, cend, qstart, qend;
+        double start, end;
+        start = omp_get_wtime();
+        for (rstart = 0; rstart < nr; rstart += rtilesize) {
+            rend = rstart + rtilesize - 1;
+            if (rend >= nr) 
+                rend = nr - 1;
+            for (cstart = 0; cstart < nc; cstart += ctilesize) {
+                cend = cstart + ctilesize - 1;
+                if (cend >= nc) 
+                    cend = nc - 1;
+                for (qstart = 0; qstart < nq; qstart += qtilesize) {
+                    qend = qstart + qtilesize - 1;
+                    if (qend >= nq) 
+                        qend = nq - 1;
+                        //cout<<rstart<<" "<<qstart<<" "<<cstart<<" "<<endl;
+                    matrix_matrix_mult_tile(C, src1, src2_trans, nr, nc, nq, rstart, rend, cstart, cend, qstart, qend);
+                } /* for qstart */
+            } /* for cstart */
+        } /* for rstart */
+        end = omp_get_wtime();
+        printf("%f seconds\n", end - start);
+        printMat(C, nr,nc);
+        *dst = C;
+        
+    } /* matrix_matrix_mult_by_tiling */ 
 
 
 
@@ -180,7 +293,7 @@ static int mult_mat_seq(size_t const n, size_t const m, size_t const p,
 	end = omp_get_wtime();
 	printf("%f seconds\n", end - start);
   *Cp = C;
-	//printMat(C, n,p);
+	printMat(C, n,p);
   return 0;
 
   cleanup:
@@ -210,12 +323,21 @@ int main(int argc, char * argv[]){
     B_trans = trans_mat(ncols, ncols2, B);
     //printMat(B_trans, ncols2, ncols );
 
-    cout<<"Parallel"<<endl;
+    /* cout<<"Parallel"<<endl;
     mult_mat(nrows, ncols, ncols2, A, B, &C);
     cout<<"Parallel w/ trans"<<endl;
-    mult_mat_trans(nrows, ncols, ncols2, A, B_trans, &C);
-    cout<<"Parallel Seq"<<endl;
+    mult_mat_transposed(nrows, ncols, ncols2, A, B_trans, &C); */
+
+    cout<<"Parallel Tiling"<<endl;
+    matrix_matrix_mult_by_tiling ( &C, A, B, nrows, ncols2, ncols, 300, 300, 300);
+
+    cout<<"Parallel Tiling Transposed"<<endl;
+    matrix_matrix_mult_by_tiling ( &C, A, B_trans, nrows, ncols2, ncols, 300, 300, 300);
+
+    cout<<"Sequential"<<endl;
     mult_mat_seq(nrows, ncols, ncols2, A, B, &C_seq);
+    
+    
     
 
     cout<<"Matrix check: "<<check_mat(nrows*ncols2, C, C_seq)<<endl;
