@@ -149,7 +149,6 @@ int mult_mat_transposed(size_t const n, size_t const m, size_t const p,
     return 0;        
 }
 
-
 void matrix_matrix_mult_tile (
     double* dst, double* src1, double* src2,
     int nr, int nc, int nq,
@@ -169,7 +168,9 @@ void matrix_matrix_mult_tile (
                 } /* for q */
             } /* for c */
         } /* for r */
+       
     } /* matrix_matrix_mult_tile */
+    
 
 
 void matrix_matrix_mult_by_tiling (
@@ -214,7 +215,6 @@ void matrix_tranposed_matrix_mult_tile (
     int qstart, int qend)
     { /* matrix_matrix_mult_tile */
         int r, c, q;
-
         #pragma omp parallel for collapse(2)
         for (r = rstart; r <= rend; r++) {
             for (c = cstart; c <= cend; c++) {
@@ -226,11 +226,11 @@ void matrix_tranposed_matrix_mult_tile (
                 } /* for q */
             } /* for c */
         } /* for r */
+
+        
     } /* matrix_matrix_mult_tile */
 
-
-
-void matrix_transposed_matrix_mult_by_tiling (
+double matrix_transposed_matrix_mult_by_tiling (
     double** dst, double* src1, double* src2_trans,
     int nr, int nc, int nq, //rxq qxc
     int rtilesize, int ctilesize, int qtilesize)
@@ -258,62 +258,39 @@ void matrix_transposed_matrix_mult_by_tiling (
             } /* for cstart */
         } /* for rstart */
         end = omp_get_wtime();
-        printf("%f seconds\n", end - start);
         printMat(C, nr,nc);
         *dst = C;
+        return end - start;
         
     } /* matrix_matrix_mult_by_tiling */ 
 
-void matrix_tranposed_matrix_mult_block (
-    double* dst, double* src1, double* src2_trans,
-    int nr, int nc, int nq,
-    int r, int c,
-    int qstart, int qend)
-    { /* matrix_matrix_mult_tile */
-        int q;
 
-        
-        if (qstart == 0) 
-            dst[mat_idx(r,c,nc)] = 0.0;
-        
-        for (q = qstart; q <= qend; q++) {
-            //cout<<mat_idx(r,c,nc)<<" "<<mat_idx(r,q,nq)<<" "<<mat_idx(c,q,nq)<<" "<<endl;
-            dst[mat_idx(r,c,nc)]  += src1[mat_idx(r,q,nq)] * src2_trans[mat_idx(c,q,nq)];
-        } /* for q */   
-    } /* matrix_matrix_mult_tile */
-
-void matrix_transposed_matrix_mult_by_blocking (
+double matrix_transposed_matrix_mult_by_blocking (
     double** dst, double* src1, double* src2_trans,
     int nr, int nc, int nq, //rxq qxc
-    int qtilesize)
-    { 
+    int blocksize)
+    {   
+        //nr x nq, nq x nc
         double *C = NULL;
         C = (double*) malloc(nr*nc*sizeof(*C));
-        int rstart, cstart, qstart, qend;
+        int rstart, rend;
         double start, end;
         start = omp_get_wtime();
-        #pragma omp parallel for collapse(2)
-        for (rstart = 0; rstart < nr; rstart += 1) {
-            for (cstart = 0; cstart < nc; cstart += 1) {
-                for(qstart = 0; qstart < nq; qstart += qtilesize) {
-                    qend = qstart + qtilesize - 1;
-                    if (qend >= nq) 
-                        qend = nq - 1;
-                        //cout<<rstart<<" "<<qstart<<" "<<cstart<<" "<<endl;
-                    matrix_tranposed_matrix_mult_block(C, src1, src2_trans, nr, nc, nq, rstart, cstart, qstart, qend);
-                } /* for qstart */
-            } /* for cstart */
-        } /* for rstart */
+        for (rstart = 0; rstart < nr; rstart += blocksize) {
+            rend = rstart + blocksize - 1;
+            if (rend >= nr) 
+                rend = nr - 1;
+            matrix_tranposed_matrix_mult_tile(C, src1, src2_trans, nr, nc, nq, rstart, rend, 0, nc-1 , 0, nq-1);
+        } /* for qstart */
+            
         end = omp_get_wtime();
-        printf("%f seconds\n", end - start);
-        printMat(C, nr,nc);
         *dst = C;
+        return end - start;
         
     } 
 
 
-
-static int mult_mat_seq(size_t const n, size_t const m, size_t const p,
+double mult_mat_seq(size_t const n, size_t const m, size_t const p,
                     double const * const A, double const * const B,
                     double ** const Cp)
 {
@@ -336,10 +313,9 @@ static int mult_mat_seq(size_t const n, size_t const m, size_t const p,
     }
   }
 	end = omp_get_wtime();
-	printf("%f seconds\n", end - start);
-  *Cp = C;
+    *Cp = C;
 	printMat(C, n,p);
-  return 0;
+    return end - start;
 
   cleanup:
   free(C);
@@ -351,7 +327,7 @@ static int mult_mat_seq(size_t const n, size_t const m, size_t const p,
 
 int main(int argc, char * argv[]){
     size_t nrows, ncols, ncols2;
-    double *A=NULL, *B = NULL, *B_trans = NULL, *C=NULL, *C_seq=NULL;
+    double *A=NULL, *B = NULL, *B_trans = NULL, *C_tile=NULL, *C_block=NULL, *C_seq=NULL;
 
     if (argc != 4) {
         fprintf(stderr, "usage: matmult_omp nrows ncols ncols2\n");
@@ -364,32 +340,53 @@ int main(int argc, char * argv[]){
 
     create_mat(nrows, ncols, &A);
     create_mat(ncols, ncols2, &B);
-
     B_trans = trans_mat(ncols, ncols2, B);
-    //printMat(B_trans, ncols2, ncols );
 
-    /* cout<<"Parallel"<<endl;
-    mult_mat(nrows, ncols, ncols2, A, B, &C);
-    cout<<"Parallel w/ trans"<<endl;
-    mult_mat_transposed(nrows, ncols, ncols2, A, B_trans, &C); */
-
-    //cout<<"Parallel Tiling"<<endl;
-    //matrix_matrix_mult_by_tiling ( &C, A, B, nrows, ncols2, ncols, 300, 300, 300); 
-
-    cout<<"Parallel Tiling Transposed"<<endl;
-    matrix_matrix_mult_by_tiling ( &C, A, B_trans, nrows, ncols2, ncols, 4500, 4500, 4500);
-
-    cout<<"Parallel Blocking Transposed"<<endl;
-    matrix_transposed_matrix_mult_by_blocking ( &C, A, B_trans, nrows, ncols2, ncols, 300);
-
+    int threadcount[10] = {1,2,4,8,12,14,16,20,24,28};
+    float percent_of_matrix[5] = {0.1, 0.2, 0.3, 0.4, 0.5};
     
-    cout<<"Sequential"<<endl;
-    mult_mat_seq(nrows, ncols, ncols2, A, B, &C_seq);
+    int percent_nrows, percent_ncols, percent_ncols2;
+    string printString;
+    string excel_print[10];
+    double recordedTime;
     
-    
-    
+    for(int i = 0; i < 10; i++){
+        
+        omp_set_num_threads(threadcount[i]);
+        cout<<"  Thread Count: "<<threadcount[i]<<endl;
+        printString = "";
+        for(int j = 0; j<5; j++){
+            percent_nrows = int(nrows*percent_of_matrix[j]);
+            percent_ncols = int(ncols*percent_of_matrix[j]);
+            percent_ncols2 = int(ncols2*percent_of_matrix[j]);
 
-    cout<<"Matrix check: "<<check_mat(nrows*ncols2, C, C_seq)<<endl;
+            recordedTime = matrix_transposed_matrix_mult_by_blocking ( &C_block, A, B_trans, nrows, ncols2, ncols, percent_nrows); 
+            cout<<"\tParallel Blocking Transposed "<<percent_of_matrix[j]*100<< "% Time: "<<recordedTime<<endl;
+            printString += to_string(recordedTime) + "\t";
+        }
+
+        for(int j = 0; j<5; j++){
+            percent_nrows = int(nrows*percent_of_matrix[j]);
+            percent_ncols = int(ncols*percent_of_matrix[j]);
+            percent_ncols2 = int(ncols2*percent_of_matrix[j]);
+
+            recordedTime = matrix_transposed_matrix_mult_by_tiling ( &C_tile, A, B_trans, nrows, ncols2, ncols, percent_nrows, percent_ncols2, percent_ncols);
+            cout<<"\tParallel Tiling Transposed "<<percent_of_matrix[j]*100<< "% Time: "<<recordedTime<<endl;
+            printString += to_string(recordedTime) + "\t";
+        }
+       
+        recordedTime =mult_mat_seq(nrows, ncols, ncols2, A, B, &C_seq);
+        cout<<"\tSequential Time: "<<recordedTime<<endl<<endl;
+        printString += to_string(recordedTime) + "\t";
+        
+        excel_print[i] = printString;
+
+        cout<<"\tBlock Matrix check: "<<check_mat(nrows*ncols2, C_block, C_seq)<<endl;
+        cout<<"\tTile Matrix check: "<<check_mat(nrows*ncols2, C_tile, C_seq)<<endl<<endl<<endl;
+    
+    }
+    for(int i=0; i < 10; i++)
+        cout<<excel_print[i]<<endl;
 
     return 0;
 
