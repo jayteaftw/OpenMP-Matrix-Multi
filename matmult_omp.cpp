@@ -1,4 +1,5 @@
 #include <iostream>
+#include<bits/stdc++.h>
 #include <omp.h>
 
 using namespace std;
@@ -361,8 +362,8 @@ int main(int argc, char * argv[]){
             percent_ncols2 = int(ncols2*percent_of_matrix[j]);
 
             recordedTime = matrix_transposed_matrix_mult_by_blocking ( &C_block, A, B_trans, nrows, ncols2, ncols, percent_nrows); 
-            cout<<"\tParallel Blocking Transposed "<<percent_of_matrix[j]*100<< "% Time: "<<recordedTime<<endl;
-            printString += to_string(recordedTime) + "\t";
+            cout<<"\tParallel Blocking Transposed "<<percent_of_matrix[j]*100<< "% Time: "<<setprecision(4)<<recordedTime*1000000<<" µs"<<endl;
+            printString += to_string(recordedTime*1000000) + "\t";
         }
 
         for(int j = 0; j<5; j++){
@@ -371,13 +372,13 @@ int main(int argc, char * argv[]){
             percent_ncols2 = int(ncols2*percent_of_matrix[j]);
 
             recordedTime = matrix_transposed_matrix_mult_by_tiling ( &C_tile, A, B_trans, nrows, ncols2, ncols, percent_nrows, percent_ncols2, percent_ncols);
-            cout<<"\tParallel Tiling Transposed "<<percent_of_matrix[j]*100<< "% Time: "<<recordedTime<<endl;
-            printString += to_string(recordedTime) + "\t";
+            cout<<"\tParallel Tiling Transposed "<<percent_of_matrix[j]*100<< "% Time: "<<setprecision(4)<<recordedTime*1000000<<" µs"<<endl;
+            printString += to_string(recordedTime*1000000) + "\t";
         }
        
         recordedTime =mult_mat_seq(nrows, ncols, ncols2, A, B, &C_seq);
-        cout<<"\tSequential Time: "<<recordedTime<<endl<<endl;
-        printString += to_string(recordedTime) + "\t";
+        cout<<"\tSequential Time: "<<setprecision(4)<<recordedTime*1000000<<" µs"<<endl<<endl;
+        printString += to_string(recordedTime*1000000) + "\t";
         
         excel_print[i] = printString;
 
@@ -385,6 +386,7 @@ int main(int argc, char * argv[]){
         cout<<"\tTile Matrix check: "<<check_mat(nrows*ncols2, C_tile, C_seq)<<endl<<endl<<endl;
     
     }
+    cout<<"Excel Print (Copy and Paste Purposes)"<<endl;
     for(int i=0; i < 10; i++)
         cout<<excel_print[i]<<endl;
 
