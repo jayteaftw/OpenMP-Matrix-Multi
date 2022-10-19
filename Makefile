@@ -1,6 +1,6 @@
 CC = g++
 
-default: matmult matmult_omp
+default: matmult_omp
 
 
 matmult_omp: $(SRC)
